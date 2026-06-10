@@ -1,0 +1,13 @@
+# SPDX-FileCopyrightText: Copyright 2026 Arm Limited and/or its affiliates <open-source-office@arm.com>
+# SPDX-License-Identifier: MIT
+
+version = 1
+
+[[annotations]]
+path = [
+    "infinity/**",
+    "tools/run_infinity.py",
+]
+precedence = "aggregate"
+SPDX-FileCopyrightText = "Copyright (c) 2024 FoundationVision"
+SPDX-License-Identifier = "MIT"
