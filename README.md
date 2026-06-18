@@ -206,6 +206,11 @@ The output directory contains:
 - `scas_scores.json`
 - `scas_orders.json`
 
+
+## Acknowlegdement
+
+Thanks to the authors of [Infinity](https://github.com/FoundationVision/Infinity) and [ScaleKV](https://github.com/StargazerX0/ScaleKV) for sharing their code with the research community.
+
 ---
 
 ## Citation
@@ -213,7 +218,7 @@ The output directory contains:
 ```bibtex
 @misc{cederlund2026heatkvheadtunedkvcachecompression,
       title={HeatKV: Head-tuned KV-cache Compression for Visual Autoregressive Modeling}, 
-      author={Jonathan Cederlund and Axel Berg and Durmus Alp Emre Acar and Chuteng Zhou and Pontus Giselsson},
+      author={Jonathan Cederlund and Axel Berg and William Isaksson and Durmus Alp Emre Acar and Chuteng Zhou and Pontus Giselsson},
       year={2026},
       eprint={2605.14877},
       archivePrefix={arXiv},
