@@ -1,0 +1,590 @@
+<!doctype html>
+<html lang="en" theme="light">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="HeatKV is a head-tuned KV-cache compression method for memory-efficient visual autoregressive image generation.">
+  <meta name="keywords" content="HeatKV, KV-cache compression, visual autoregressive models, VAR, image generation, S-CAS, Infinity, Arm Research">
+  <meta name="author" content="Jonathan Cederlund, Axel Berg, William Isaksson, Durmus Alp Emre Acar, Chuteng Zhou, Pontus Giselsson">
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="HeatKV: Head-tuned KV-cache Compression for Visual Autoregressive Modeling">
+  <meta property="og:description" content="Fine-grained, head-specific KV-cache allocation for high-quality image generation under strict memory budgets.">
+  <meta property="og:image" content="https://raw.githubusercontent.com/arm-research/heatkv/main/assets/comparison.png">
+  <title>HeatKV | Arm Research</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='12' fill='%23080225'/%3E%3Cpath d='M14 15h9v13h18V15h9v34h-9V36H23v13h-9z' fill='%23f26419'/%3E%3C/svg%3E">
+
+  <link rel="stylesheet" href="https://www.arm.com/static/designsystem/rel/4.14.1/arm-design-system-scoped.css">
+  <style>
+    :root {
+      --page-ink: #080225;
+      --page-blue: #0057ff;
+      --page-cyan: #02eaea;
+      --page-violet: #7233f7;
+      --page-orange: #f26419;
+      --page-yellow: #ffae2d;
+      --page-muted: #6f6f6f;
+      --page-soft: #f3f3f3;
+      --page-line: rgba(8, 2, 37, 0.15);
+      --page-white: #fff;
+      --page-shadow: 0 18px 44px rgba(8, 2, 37, 0.12);
+      --content-width: 1120px;
+    }
+
+    *, *::before, *::after { box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+    body {
+      margin: 0;
+      color: var(--page-ink);
+      background: var(--page-white);
+      font-family: Lato, "Helvetica Neue", Arial, sans-serif;
+      font-size: 17px;
+      line-height: 1.65;
+      -webkit-font-smoothing: antialiased;
+    }
+    img { display: block; width: 100%; height: auto; }
+    a { color: var(--page-blue); text-underline-offset: 0.18em; }
+    a:hover { color: var(--page-violet); }
+    a:focus-visible, summary:focus-visible {
+      outline: 3px solid var(--page-violet);
+      outline-offset: 4px;
+      border-radius: 4px;
+    }
+    h1, h2, h3, p { margin-top: 0; }
+    h1, h2, h3 { color: var(--page-ink); line-height: 1.14; letter-spacing: 0; }
+    h1 { margin-bottom: 1.25rem; font-size: 5.2rem; }
+    h2 { margin-bottom: 1.3rem; font-size: 3rem; }
+    h3 { margin-bottom: 0.65rem; font-size: 1.18rem; }
+
+    .skip-link {
+      position: fixed;
+      z-index: 100;
+      top: 0.7rem;
+      left: 0.7rem;
+      padding: 0.7rem 1rem;
+      color: var(--page-ink);
+      background: var(--page-yellow);
+      transform: translateY(-180%);
+      transition: transform 150ms ease;
+    }
+    .skip-link:focus { transform: translateY(0); }
+
+    .page-container { width: min(calc(100% - 2rem), var(--content-width)); max-width: 100%; min-width: 0; margin-inline: auto; }
+    .narrow { width: min(100%, 860px); margin-inline: auto; }
+    .section { padding: 6.5rem 0; }
+    .section-soft { background: var(--page-soft); }
+    .eyebrow {
+      margin-bottom: 0.7rem;
+      color: var(--page-violet);
+      font-size: 0.78rem;
+      font-weight: 800;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+    }
+    .section-intro { max-width: 800px; color: var(--page-muted); font-size: 1.16rem; }
+
+    .site-nav {
+      position: sticky;
+      z-index: 20;
+      top: 0;
+      border-bottom: 1px solid var(--page-line);
+      background: rgba(255, 255, 255, 0.94);
+      backdrop-filter: blur(12px);
+    }
+    .nav-inner {
+      display: flex;
+      min-height: 72px;
+      align-items: center;
+      justify-content: space-between;
+      gap: 1rem;
+    }
+    .home-link, .research-menu summary {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.55rem;
+      color: var(--page-ink);
+      font-size: 0.92rem;
+      font-weight: 800;
+      text-decoration: none;
+      cursor: pointer;
+    }
+    .home-link svg { width: 1.25rem; height: 1.25rem; }
+    .research-menu { position: relative; }
+    .research-menu summary { list-style: none; }
+    .research-menu summary::-webkit-details-marker { display: none; }
+    .research-menu summary::after {
+      width: 0.52rem;
+      height: 0.52rem;
+      border-right: 2px solid currentColor;
+      border-bottom: 2px solid currentColor;
+      content: "";
+      transform: translateY(-2px) rotate(45deg);
+      transition: transform 160ms ease;
+    }
+    .research-menu[open] summary::after { transform: translateY(2px) rotate(225deg); }
+    .menu-panel {
+      position: absolute;
+      top: calc(100% + 0.9rem);
+      right: 0;
+      min-width: 250px;
+      overflow: hidden;
+      border: 1px solid var(--page-line);
+      border-radius: 8px;
+      background: var(--page-white);
+      box-shadow: var(--page-shadow);
+    }
+    .menu-panel a {
+      display: block;
+      padding: 0.85rem 1rem;
+      color: var(--page-ink);
+      font-weight: 700;
+      text-decoration: none;
+    }
+    .menu-panel a + a { border-top: 1px solid var(--page-line); }
+    .menu-panel a:hover { color: var(--page-ink); background: var(--page-soft); }
+
+    .hero {
+      position: relative;
+      overflow: hidden;
+      padding: 7.4rem 0 5.6rem;
+      color: var(--page-ink);
+      background: linear-gradient(135deg, var(--page-yellow) 0%, var(--page-orange) 100%);
+    }
+    .hero-content { position: relative; z-index: 1; text-align: center; }
+    .hero h1 { max-width: 1040px; margin-inline: auto; color: var(--page-ink); }
+    .hero-kicker {
+      margin-bottom: 1rem;
+      color: var(--page-ink);
+      font-size: 0.82rem;
+      font-weight: 800;
+      letter-spacing: 0.16em;
+      text-transform: uppercase;
+    }
+    .hero-deck {
+      max-width: 830px;
+      margin: 0 auto 1.7rem;
+      color: rgba(8, 2, 37, 0.82);
+      font-size: 1.24rem;
+    }
+    .authors { margin-bottom: 0.35rem; font-size: 1.05rem; }
+    .authors span { display: inline-block; white-space: nowrap; }
+    .authors span:not(:last-child)::after { content: ",\00a0"; }
+    .affiliation { margin-bottom: 2rem; color: rgba(8, 2, 37, 0.72); font-size: 0.95rem; }
+    .resource-buttons { display: flex; flex-wrap: wrap; justify-content: center; gap: 0.72rem; }
+    .resource-button {
+      display: inline-flex;
+      min-height: 44px;
+      align-items: center;
+      gap: 0.55rem;
+      padding: 0.68rem 1.12rem;
+      border: 1px solid rgba(8, 2, 37, 0.3);
+      border-radius: 999px;
+      color: var(--page-ink);
+      background: rgba(255, 255, 255, 0.24);
+      font-size: 0.9rem;
+      font-weight: 800;
+      text-decoration: none;
+      transition: transform 150ms ease, background 150ms ease;
+    }
+    .resource-button:hover { color: var(--page-ink); background: rgba(255, 255, 255, 0.42); transform: translateY(-2px); }
+    .resource-button svg { width: 1rem; height: 1rem; flex: 0 0 auto; }
+
+    .media-card {
+      overflow: hidden;
+      margin-top: 2.4rem;
+      border: 1px solid var(--page-line);
+      border-radius: 8px;
+      background: var(--page-white);
+      box-shadow: var(--page-shadow);
+    }
+    .media-card img { object-fit: contain; }
+    .media-card figcaption { padding: 0.85rem 1.1rem; color: var(--page-muted); font-size: 0.82rem; }
+    .pipeline-figure img { padding: 1.3rem; background: var(--page-white); }
+
+    .method-grid {
+      display: grid;
+      margin-top: 2.4rem;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 1rem;
+    }
+    .method-card {
+      min-height: 100%;
+      padding: 1.35rem;
+      border: 1px solid var(--page-line);
+      border-radius: 8px;
+      background: var(--page-white);
+    }
+    .step-number {
+      display: grid;
+      width: 2rem;
+      height: 2rem;
+      margin-bottom: 1rem;
+      place-items: center;
+      border-radius: 50%;
+      color: var(--page-ink);
+      background: var(--page-yellow);
+      font-size: 0.82rem;
+      font-weight: 900;
+    }
+    .method-card p { margin-bottom: 0; color: var(--page-muted); font-size: 0.94rem; }
+    .method-grid .method-card:nth-child(4) { grid-column: 1 / 2; }
+    .method-grid .method-card:nth-child(5) { grid-column: 2 / 4; }
+
+    .result-callout {
+      padding: 1.5rem;
+      border-left: 6px solid var(--page-yellow);
+      border-radius: 0 8px 8px 0;
+      background: var(--page-soft);
+    }
+    .result-callout strong { display: block; color: var(--page-ink); font-size: 1.34rem; line-height: 1.25; }
+    .result-callout p { margin: 0.65rem 0 0; color: var(--page-muted); font-size: 0.94rem; }
+    .result-points { margin: 1.6rem 0 0; padding-left: 1.2rem; }
+    .result-points li + li { margin-top: 0.8rem; }
+
+    .table-wrap {
+      overflow-x: auto;
+      margin-top: 2rem;
+      border: 1px solid var(--page-line);
+      border-radius: 8px;
+      background: var(--page-white);
+      box-shadow: var(--page-shadow);
+    }
+    .results-table {
+      width: 100%;
+      min-width: 680px;
+      border-collapse: collapse;
+      font-size: 0.92rem;
+      line-height: 1.45;
+    }
+    .results-table th,
+    .results-table td {
+      padding: 0.85rem 1rem;
+      border-bottom: 1px solid var(--page-line);
+      text-align: left;
+      vertical-align: top;
+      white-space: nowrap;
+    }
+    .results-table thead th {
+      color: var(--page-ink);
+      background: var(--page-soft);
+      font-size: 0.78rem;
+      font-weight: 900;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+    .results-table tbody tr:last-child th,
+    .results-table tbody tr:last-child td { border-bottom: 0; }
+    .results-table .metric { text-align: right; }
+    .results-table .heatkv-row th,
+    .results-table .heatkv-row td { font-weight: 800; }
+    .results-table .heatkv-row th { color: var(--page-violet); }
+    .table-note { margin: 0.85rem 0 0; color: var(--page-muted); font-size: 0.86rem; }
+
+    .related-grid {
+      display: grid;
+      margin-top: 2.2rem;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 1rem;
+    }
+    .related-card {
+      display: flex;
+      min-height: 160px;
+      flex-direction: column;
+      justify-content: space-between;
+      padding: 1.35rem;
+      border: 1px solid var(--page-line);
+      border-radius: 8px;
+      color: var(--page-ink);
+      background: var(--page-white);
+      text-decoration: none;
+      transition: border-color 150ms ease, transform 150ms ease, box-shadow 150ms ease;
+    }
+    .related-card:hover { border-color: var(--page-blue); color: var(--page-ink); transform: translateY(-3px); box-shadow: 0 12px 28px rgba(8, 2, 37, 0.09); }
+    .related-card small { color: var(--page-muted); }
+    .related-card .arrow { color: var(--page-blue); font-weight: 900; }
+
+    .bibtex {
+      overflow-x: auto;
+      margin: 1.5rem 0 0;
+      padding: 1.4rem;
+      border: 1px solid rgba(255, 255, 255, 0.25);
+      border-radius: 8px;
+      color: var(--page-white);
+      background: var(--page-ink);
+      font: 0.86rem/1.65 "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+      white-space: pre;
+    }
+    .citation-note { margin-top: 1rem; color: var(--page-muted); font-size: 0.88rem; }
+
+    .site-footer { padding: 2.5rem 0; color: rgba(255, 255, 255, 0.78); background: var(--page-ink); font-size: 0.84rem; }
+    .footer-inner { display: grid; grid-template-columns: 1fr auto; gap: 2rem; }
+    .site-footer p { max-width: 780px; margin-bottom: 0.6rem; }
+    .site-footer a { color: var(--page-cyan); }
+    .footer-mark { color: var(--page-white); font-weight: 900; letter-spacing: 0.08em; text-transform: uppercase; white-space: nowrap; }
+
+    @media (max-width: 820px) {
+      h1 { font-size: 4rem; }
+      h2 { font-size: 2.45rem; }
+      .section { padding: 5rem 0; }
+      .method-grid, .related-grid { grid-template-columns: 1fr 1fr; }
+      .method-grid .method-card:nth-child(4), .method-grid .method-card:nth-child(5) { grid-column: auto; }
+    }
+    @media (max-width: 560px) {
+      body { font-size: 16px; }
+      h1 { font-size: 3rem; }
+      h2 { font-size: 2rem; }
+      .nav-label { display: none; }
+      .hero { padding: 4rem 0 3.8rem; }
+      .hero-deck { font-size: 1.08rem; }
+      .method-grid, .related-grid, .footer-inner { grid-template-columns: 1fr; }
+      .authors span { white-space: normal; }
+      .resource-button { flex: 1 1 42%; justify-content: center; }
+      .pipeline-figure img { padding: 0.8rem; }
+      .footer-mark { white-space: normal; }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      html { scroll-behavior: auto; }
+      *, *::before, *::after { transition: none !important; }
+    }
+    @media print {
+      .skip-link { display: none !important; }
+      .site-nav { position: static; }
+      figure, article, .related-card, .bibtex, .table-wrap { break-inside: avoid; }
+      #bibtex { break-before: page; }
+    }
+  </style>
+</head>
+<body class="arm-design-system">
+  <a class="skip-link" href="#main-content">Skip to main content</a>
+
+  <nav class="site-nav" aria-label="Primary navigation">
+    <div class="page-container nav-inner">
+      <a class="home-link" href="https://github.com/arm-research" aria-label="Arm Research on GitHub">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M12 3.2 2.5 11v10h6.2v-6.2h6.6V21h6.2V11L12 3.2Zm7.5 15.8h-2.2v-6.2H6.7V19H4.5v-7.1L12 5.7l7.5 6.2V19Z"/></svg>
+        <span class="nav-label">Arm Research</span>
+      </a>
+
+      <details class="research-menu">
+        <summary>More research</summary>
+        <div class="menu-panel">
+          <a href="https://arm-research.github.io/AAIR-LFM-LLIE/">LFM-LLIE</a>
+          <a href="https://arm-research.github.io/AAIR-LATMiX/">LATMiX</a>
+          <a href="https://github.com/arm-research">All Arm Research repositories</a>
+        </div>
+      </details>
+    </div>
+  </nav>
+
+  <header class="hero">
+    <div class="page-container hero-content">
+      <p class="hero-kicker">Computer Vision | AI Research | Arm</p>
+      <h1>HeatKV</h1>
+      <p class="hero-deck">Head-tuned KV-cache Compression for Visual Autoregressive Modeling</p>
+
+      <p class="authors" aria-label="Authors">
+        <span>Jonathan Cederlund<sup>1,2</sup></span>
+        <span>Axel Berg<sup>1</sup></span>
+        <span>William Isaksson<sup>1</sup></span>
+        <span>Durmus Alp Emre Acar<sup>1</sup></span>
+        <span>Chuteng Zhou<sup>1</sup></span>
+        <span>Pontus Giselsson<sup>2</sup></span>
+      </p>
+      <p class="affiliation"><sup>1</sup> Arm &nbsp;&nbsp; <sup>2</sup> Department of Automatic Control, Lund University</p>
+
+      <div class="resource-buttons" aria-label="Project resources">
+        <a class="resource-button" href="https://arxiv.org/pdf/2605.14877">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M6 2h8l5 5v15H6V2Zm2 2v16h9V8h-4V4H8Zm7 .8V6h1.2L15 4.8Z"/></svg>
+          Paper
+        </a>
+        <a class="resource-button" href="https://arxiv.org/abs/2605.14877">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="m7.1 4 4.9 7.2L16.9 4h2.4l-6.1 9 6.1 9h-2.4L12 14.8 7.1 22H4.7l6.1-9L4.7 4h2.4Z"/></svg>
+          arXiv
+        </a>
+        <a class="resource-button" href="https://github.com/arm-research/heatkv">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M12 2C6.5 2 2 6.6 2 12.2c0 4.5 2.9 8.3 6.8 9.7.5.1.7-.2.7-.5v-2c-2.8.6-3.4-1.2-3.4-1.2-.4-1.2-1.1-1.5-1.1-1.5-.9-.6.1-.6.1-.6 1 0 1.5 1.1 1.5 1.1.9 1.6 2.4 1.1 3 .9.1-.7.4-1.1.6-1.4-2.2-.3-4.6-1.1-4.6-5 0-1.1.4-2 1-2.7-.1-.3-.4-1.3.1-2.7 0 0 .8-.3 2.8 1a9.4 9.4 0 0 1 5 0c1.9-1.3 2.8-1 2.8-1 .5 1.4.2 2.4.1 2.7.6.7 1 1.6 1 2.7 0 3.9-2.4 4.7-4.6 5 .4.3.7.9.7 1.8v2.7c0 .3.2.6.7.5a10.2 10.2 0 0 0 6.8-9.7C22 6.6 17.5 2 12 2Z"/></svg>
+          Code
+        </a>
+      </div>
+    </div>
+  </header>
+
+  <main id="main-content">
+    <section class="section" id="abstract" aria-labelledby="abstract-heading">
+      <div class="page-container narrow">
+        <p class="eyebrow">Overview</p>
+        <h2 id="abstract-heading">Abstract</h2>
+        <p>Visual Autoregressive (VAR) models can generate high-quality images with low latency, but their KV caches can consume gigabytes of accelerator memory for every generated image. This limits batch size and makes high-resolution image generation difficult on memory-constrained hardware.</p>
+        <p>HeatKV introduces a fine-grained compression policy that adapts cache allocation for each attention head and image scale. A small offline calibration set is used to calculate the Scale-dependent Cumulative Attention Score (S-CAS), which ranks how strongly each head depends on previously generated scales.</p>
+        <p>From these rankings, HeatKV builds a static pruning schedule for a chosen memory budget. It removes low-importance head-scale pairs while retaining the cached information that contributes most to future generation, preserving fidelity, prompt alignment, and perceptual quality under aggressive compression.</p>
+
+        <figure class="media-card pipeline-figure">
+          <img src="https://raw.githubusercontent.com/arm-research/heatkv/main/assets/HeatKV.png" alt="HeatKV workflow showing calibration images, offline S-CAS computation, and inference-time pruning of low-importance head-scale cache entries." fetchpriority="high">
+          <figcaption>Figure 1. HeatKV uses calibration images to rank head-scale importance with S-CAS, then applies the resulting static pruning schedule during inference.</figcaption>
+        </figure>
+      </div>
+    </section>
+
+    <section class="section section-soft" id="method" aria-labelledby="method-heading">
+      <div class="page-container narrow">
+        <p class="eyebrow">How it works</p>
+        <h2 id="method-heading">Method</h2>
+        <p class="section-intro">HeatKV turns stable attention patterns into a predictable cache-allocation policy that meets a user-selected memory budget throughout image generation.</p>
+
+        <div class="method-grid">
+          <article class="method-card">
+            <span class="step-number">1</span>
+            <h3>Collect calibration prompts</h3>
+            <p>A small offline prompt set is used to observe attention patterns as the VAR model generates token maps at increasing scales.</p>
+          </article>
+          <article class="method-card">
+            <span class="step-number">2</span>
+            <h3>Measure scale attention</h3>
+            <p>Attention probabilities are aggregated for each layer, head, source scale, and future generation scale.</p>
+          </article>
+          <article class="method-card">
+            <span class="step-number">3</span>
+            <h3>Rank with S-CAS</h3>
+            <p>S-CAS ranks head-scale pairs by their contribution to future predictions, capturing more detail than binary head or layer classes.</p>
+          </article>
+          <article class="method-card">
+            <span class="step-number">4</span>
+            <h3>Allocate the budget</h3>
+            <p>The target memory budget determines how many low-ranked head-scale pairs must be removed while early sink scales are retained.</p>
+          </article>
+          <article class="method-card">
+            <span class="step-number">5</span>
+            <h3>Prune during inference</h3>
+            <p>A static schedule and greedy early-pruning policy keep cache use within budget as new scales are generated, without prompt-dependent allocation.</p>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <section class="section" id="results" aria-labelledby="results-heading">
+      <div class="page-container narrow">
+        <p class="eyebrow">Evaluation</p>
+        <h2 id="results-heading">Results</h2>
+        <div class="result-callout">
+          <strong>2× higher KV-cache compression ratio at comparable image quality</strong>
+          <p>On Infinity-2B, HeatKV at a 10% cache budget outperforms the strongest reported baseline at a 20% budget across FID, LPIPS, and PSNR.</p>
+        </div>
+        <ul class="result-points">
+          <li>Experiments evaluate Infinity-2B and Infinity-8B at 20%, 10%, and 4% of the original cache budget.</li>
+          <li>Testing covers fidelity on MS-COCO 2017, prompt alignment on GenEval, and perceptual quality with HPSv2.1.</li>
+          <li>S-CAS rankings remain stable with a small calibration set, supporting an offline schedule that can be prepared before inference.</li>
+        </ul>
+
+        <div class="table-wrap" role="region" aria-label="Selected HeatKV fidelity results" tabindex="0">
+          <table class="results-table">
+            <caption class="table-note">Selected Infinity-2B results from Table 1 of the paper. Lower FID and LPIPS are better; higher PSNR is better.</caption>
+            <thead>
+              <tr>
+                <th scope="col">Method</th>
+                <th scope="col" class="metric">Budget</th>
+                <th scope="col" class="metric">KV cache</th>
+                <th scope="col" class="metric">FID ↓</th>
+                <th scope="col" class="metric">LPIPS ↓</th>
+                <th scope="col" class="metric">PSNR ↑</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <th scope="row">Full cache</th>
+                <td class="metric">100%</td>
+                <td class="metric">38,550 MB</td>
+                <td class="metric">—</td>
+                <td class="metric">—</td>
+                <td class="metric">—</td>
+              </tr>
+              <tr>
+                <th scope="row">ScaleKV</th>
+                <td class="metric">20%</td>
+                <td class="metric">7,800 MB</td>
+                <td class="metric">1.94</td>
+                <td class="metric">0.079</td>
+                <td class="metric">24.93</td>
+              </tr>
+              <tr class="heatkv-row">
+                <th scope="row">HeatKV</th>
+                <td class="metric">10%</td>
+                <td class="metric">3,900 MB</td>
+                <td class="metric">1.67</td>
+                <td class="metric">0.073</td>
+                <td class="metric">25.40</td>
+              </tr>
+              <tr class="row">
+                <th scope="row">HeatKV</th>
+                <td class="metric">4%</td>
+                <td class="metric">1,590 MB</td>
+                <td class="metric">2.70</td>
+                <td class="metric">0.127</td>
+                <td class="metric">22.14</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <p class="table-note">See the paper for full results across all baselines, budgets, models, and evaluation metrics.</p>
+
+        <figure class="media-card">
+          <img src="https://raw.githubusercontent.com/arm-research/heatkv/main/assets/comparison.png" alt="Four paired image-generation examples comparing Infinity-8B with a full 42 GB KV cache against HeatKV with a 2.1 GB KV cache." loading="lazy">
+          <figcaption>Figure 2. Infinity-8B examples using a full 42 GB KV cache (top) and HeatKV with a 2.1 GB cache (bottom), a 20× reduction in cache allocation.</figcaption>
+        </figure>
+      </div>
+    </section>
+
+    <section class="section section-soft" id="related-links" aria-labelledby="links-heading">
+      <div class="page-container narrow">
+        <p class="eyebrow">Explore the work</p>
+        <h2 id="links-heading">Related Links</h2>
+        <div class="related-grid">
+          <a class="related-card" href="https://arxiv.org/pdf/2605.14877">
+            <div><small>arXiv</small><h3>Paper PDF</h3></div><span class="arrow">Read the paper &rarr;</span>
+          </a>
+          <a class="related-card" href="https://arxiv.org/abs/2605.14877">
+            <div><small>arXiv</small><h3>Abstract page</h3></div><span class="arrow">View metadata &rarr;</span>
+          </a>
+          <a class="related-card" href="https://github.com/arm-research/heatkv">
+            <div><small>GitHub</small><h3>Code and setup</h3></div><span class="arrow">Open the repository &rarr;</span>
+          </a>
+          <a class="related-card" href="https://github.com/arm-research/heatkv/blob/main/tools/compute_scas.py">
+            <div><small>GitHub</small><h3>S-CAS calibration</h3></div><span class="arrow">Explore the tool &rarr;</span>
+          </a>
+          <a class="related-card" href="https://github.com/arm-research/heatkv/blob/main/THIRD_PARTY.md">
+            <div><small>GitHub</small><h3>Third-party notices</h3></div><span class="arrow">Review dependencies &rarr;</span>
+          </a>
+          <a class="related-card" href="https://github.com/arm-research">
+            <div><small>GitHub</small><h3>Arm Research</h3></div><span class="arrow">Explore more research &rarr;</span>
+          </a>
+        </div>
+      </div>
+    </section>
+
+    <section class="section" id="bibtex" aria-labelledby="bibtex-heading">
+      <div class="page-container narrow">
+        <p class="eyebrow">Citation</p>
+        <h2 id="bibtex-heading">BibTeX</h2>
+        <p>If you find this work useful, please cite the HeatKV paper:</p>
+        <pre class="bibtex"><code>@misc{cederlund2026heatkvheadtunedkvcachecompression,
+  title={HeatKV: Head-tuned KV-cache Compression for Visual Autoregressive Modeling},
+  author={Jonathan Cederlund and Axel Berg and William Isaksson and
+          Durmus Alp Emre Acar and Chuteng Zhou and Pontus Giselsson},
+  year={2026},
+  eprint={2605.14877},
+  archivePrefix={arXiv},
+  primaryClass={cs.CV},
+  url={https://arxiv.org/abs/2605.14877}
+}</code></pre>
+      </div>
+    </section>
+  </main>
+
+  <footer class="site-footer">
+    <div class="page-container footer-inner">
+      <div>
+        <p>HeatKV code is released under the <a href="https://github.com/arm-research/heatkv/blob/main/LICENSE">MIT License</a>. The repository includes derived Infinity components with preserved <a href="https://github.com/arm-research/heatkv/blob/main/THIRD_PARTY.md">third-party notices</a>.</p>
+        <p>Page structure inspired by the <a href="https://nerfies.github.io/">Nerfies project page</a> and its <a href="https://github.com/nerfies/nerfies.github.io">published source</a>, which is licensed under <a href="https://creativecommons.org/licenses/by-sa/4.0/">CC BY-SA 4.0</a>.</p>
+      </div>
+      <div class="footer-mark">HeatKV | Arm Research</div>
+    </div>
+  </footer>
+</body>
+</html>
